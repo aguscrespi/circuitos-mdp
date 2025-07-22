@@ -20,13 +20,11 @@
         margin: 0; 
         padding: 0; 
         font-family: Arial, sans-serif; 
+        display: flex; /* Usamos flexbox para el layout */
+        flex-direction: column;
       }
       #title-banner {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        z-index: 2000;
+        flex-shrink: 0; /* Evita que el banner se encoja */
         background-color: #2c3e50;
         color: white;
         text-align: center;
@@ -36,11 +34,13 @@
         box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         box-sizing: border-box;
       }
+      #main-container {
+        flex-grow: 1; /* Ocupa el resto del espacio */
+        position: relative;
+      }
       #map { 
-        position: absolute;
-        top: 45px;
-        bottom: 0;
         width: 100%;
+        height: 100%;
       }
       .leaflet-popup-content-wrapper { border-radius: 5px; }
       .leaflet-popup-content h3 { margin: 0 0 10px 0; color: #333; }
@@ -53,7 +53,7 @@
       }
       #controls {
         position: absolute;
-        top: 55px;
+        top: 10px;
         right: 10px;
         z-index: 1000;
         background: white;
@@ -105,6 +105,32 @@
         border-top: 1px solid #eee;
         padding-top: 10px;
       }
+
+      /* ===== NUEVOS ESTILOS RESPONSIVOS PARA CELULARES ===== */
+      @media (max-width: 600px) {
+        body {
+            /* En móvil, el panel de control va abajo */
+            flex-direction: column-reverse;
+        }
+        #title-banner {
+            font-size: 11px; /* Letra más pequeña en el título */
+            padding: 10px 5px;
+        }
+        #map {
+            /* El mapa ya ocupa el espacio flexible, no necesita cambio */
+        }
+        #controls {
+            /* El panel ya no es flotante, es parte del flujo normal */
+            position: static;
+            width: auto; /* Ocupa el ancho completo */
+            border-radius: 0;
+            box-shadow: none;
+            border-top: 2px solid #ccc;
+        }
+        #filter-container {
+            max-height: 150px; /* Un poco menos de altura en móvil */
+        }
+      }
     </style>
 </head>
 <body>
@@ -112,14 +138,17 @@
       CREADO POR AGUSTIN CRESPI PARA SENTIDO COMUN MARPLATENSE - MANINO IRIART
     </div>
 
-    <div id="map"></div>
-    <div id="controls">
-      <h4>Filtrar por Circuito</h4>
-      <div id="filter-container">
-        <!-- Los checkboxes se insertarán aquí dinámicamente -->
-      </div>
-      <button id="clear-button">Limpiar selección</button>
-      <div id="elector-total">Total Electores: Cargando...</div>
+    <!-- Contenedor principal para el mapa y los controles en desktop -->
+    <div id="main-container">
+        <div id="map"></div>
+        <div id="controls">
+          <h4>Filtrar por Circuito</h4>
+          <div id="filter-container">
+            <!-- Los checkboxes se insertarán aquí dinámicamente -->
+          </div>
+          <button id="clear-button">Limpiar selección</button>
+          <div id="elector-total">Total Electores: Cargando...</div>
+        </div>
     </div>
     
     <script>
