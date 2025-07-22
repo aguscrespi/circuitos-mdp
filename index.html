@@ -4,25 +4,256 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visualizador de Circuitos Electorales</title>
+    
+    <!-- Carga de la librería Leaflet.js (CSS y JS) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+
     <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            overflow: hidden; /* Evita que aparezcan barras de scroll */
-        }
-        .iframe-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none; /* Quita el borde del iframe */
-        }
+      html, body { 
+        height: 100%; 
+        width: 100%; 
+        margin: 0; 
+        padding: 0; 
+        font-family: Arial, sans-serif; 
+      }
+      #title-banner {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        z-index: 2000;
+        background-color: #2c3e50;
+        color: white;
+        text-align: center;
+        padding: 12px 0;
+        font-size: 14px;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        box-sizing: border-box;
+      }
+      #map { 
+        position: absolute;
+        top: 45px;
+        bottom: 0;
+        width: 100%;
+      }
+      .leaflet-popup-content-wrapper { border-radius: 5px; }
+      .leaflet-popup-content h3 { margin: 0 0 10px 0; color: #333; }
+      .leaflet-popup-content p { margin: 5px 0; color: #555; }
+      .circuit-label {
+        background: transparent; border: none; box-shadow: none; color: white;
+        font-size: 10px; font-weight: bold;
+        text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000;
+        text-align: center; white-space: nowrap; pointer-events: none;
+      }
+      #controls {
+        position: absolute;
+        top: 55px;
+        right: 10px;
+        z-index: 1000;
+        background: white;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        width: 220px;
+      }
+      #controls h4 {
+        margin: 0 0 5px 0;
+        text-align: center;
+      }
+      #filter-container {
+        max-height: 250px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 5px;
+        margin-bottom: 10px;
+      }
+      .checkbox-item {
+        display: block;
+        margin-bottom: 3px;
+        padding: 2px;
+        font-size: 12px;
+      }
+      .checkbox-item:hover {
+        background-color: #f0f0f0;
+      }
+      .checkbox-item label {
+        margin-left: 5px;
+        cursor: pointer;
+        user-select: none;
+      }
+      #controls button {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #aaa;
+        background: #f8f8f8;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      #controls button:hover {
+        background: #eee;
+      }
+      #elector-total {
+        margin-top: 10px;
+        font-weight: bold;
+        font-size: 14px;
+        border-top: 1px solid #eee;
+        padding-top: 10px;
+      }
     </style>
 </head>
 <body>
-    <!-- Este iframe cargará y mostrará tu aplicación web de Google Apps Script -->
-    <iframe class="iframe-container" src="https://script.google.com/macros/s/AKfycbwoFkViU__43Fe7GT2hC0Yy0N7eC7O5N9AGbXPdAC7xvZGEWCuVXHxlYSuZ5DYhq5LaWg/exec"></iframe>
+    <div id="title-banner">
+      CREADO POR AGUSTIN CRESPI PARA SENTIDO COMUN MARPLATENSE - MANINO IRIART
+    </div>
+
+    <div id="map"></div>
+    <div id="controls">
+      <h4>Filtrar por Circuito</h4>
+      <div id="filter-container">
+        <!-- Los checkboxes se insertarán aquí dinámicamente -->
+      </div>
+      <button id="clear-button">Limpiar selección</button>
+      <div id="elector-total">Total Electores: Cargando...</div>
+    </div>
+    
+    <script>
+      const map = L.map('map').setView([-38.0055, -57.5426], 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+
+      let allGeoJsonData;
+      let currentGeoJsonLayer;
+      let labelLayerGroup;
+
+      function onDataReceived(geojsonData) {
+        allGeoJsonData = geojsonData;
+        labelLayerGroup = L.layerGroup().addTo(map);
+        
+        populateFilterCheckboxes(allGeoJsonData.features);
+        renderFeatures(allGeoJsonData);
+      }
+
+      function renderFeatures(geojsonData) {
+        if (currentGeoJsonLayer) map.removeLayer(currentGeoJsonLayer);
+        if (labelLayerGroup) labelLayerGroup.clearLayers();
+
+        let totalElectors = 0;
+
+        currentGeoJsonLayer = L.geoJson(geojsonData, {
+          style: styleFeature,
+          onEachFeature: (feature, layer) => {
+            const properties = feature.properties;
+            const numElectors = parseInt(properties.ELECTORES) || 0;
+            totalElectors += numElectors;
+
+            const popupContent = `
+              <h3>Circuito Electoral</h3>
+              <p><b>Departamento:</b> ${properties.departamen}</p>
+              <p><b>Cabecera:</b> ${properties.cabecera}</p>
+              <p><b>Circuito N°:</b> ${properties.circuito}</p>
+              <p><b>Cantidad de Electores:</b> ${numElectors.toLocaleString('es-AR')}</p>
+            `;
+            layer.bindPopup(popupContent);
+
+            const center = layer.getBounds().getCenter();
+            const labelIcon = L.divIcon({
+              className: 'circuit-label',
+              html: `<div>${properties.circuito}</div>`,
+              iconSize: [60, 20],
+              iconAnchor: [30, 10]
+            });
+            L.marker(center, { icon: labelIcon }).addTo(labelLayerGroup);
+          }
+        }).addTo(map);
+
+        document.getElementById('elector-total').innerText = `Total Electores: ${totalElectors.toLocaleString('es-AR')}`;
+      }
+
+      function styleFeature(feature) {
+        const color = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+        return { fillColor: color, weight: 1, opacity: 1, color: 'white', fillOpacity: 0.65 };
+      }
+      
+      function onFailure(error) {
+         alert('No se pudo cargar el archivo de datos (data.geojson). Asegúrate de que el archivo está en el repositorio. Error: ' + error.message);
+      }
+
+      function populateFilterCheckboxes(features) {
+        const filterContainer = document.getElementById('filter-container');
+        filterContainer.innerHTML = '';
+
+        const circuitData = {};
+        features.forEach(f => {
+            const circuit = f.properties.circuito;
+            const electors = parseInt(f.properties.ELECTORES) || 0;
+            if (!circuitData[circuit]) {
+                circuitData[circuit] = electors;
+            }
+        });
+
+        const circuits = Object.keys(circuitData).sort();
+
+        circuits.forEach(circuit => {
+            const electors = circuitData[circuit];
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'checkbox-item';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.id = `chk-${circuit}`;
+            checkbox.value = circuit;
+            checkbox.addEventListener('change', applyCheckboxFilter);
+
+            const label = document.createElement('label');
+            label.htmlFor = `chk-${circuit}`;
+            label.textContent = `${circuit} (${electors.toLocaleString('es-AR')})`;
+
+            itemDiv.appendChild(checkbox);
+            itemDiv.appendChild(label);
+            filterContainer.appendChild(itemDiv);
+        });
+      }
+
+      function applyCheckboxFilter() {
+        const checkedCheckboxes = document.querySelectorAll('#filter-container input:checked');
+        const selectedCircuits = Array.from(checkedCheckboxes).map(cb => cb.value);
+
+        if (selectedCircuits.length === 0) {
+            renderFeatures(allGeoJsonData);
+            return;
+        }
+
+        const filteredFeatures = allGeoJsonData.features.filter(feature => {
+            return selectedCircuits.includes(feature.properties.circuito);
+        });
+
+        renderFeatures({ type: 'FeatureCollection', features: filteredFeatures });
+      }
+
+      document.getElementById('clear-button').addEventListener('click', () => {
+        document.querySelectorAll('#filter-container input:checked').forEach(cb => cb.checked = false);
+        renderFeatures(allGeoJsonData);
+        map.setView([-38.0055, -57.5426], 11);
+      });
+
+      // Cargar los datos desde el archivo local data.geojson
+      fetch('data.geojson')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(onDataReceived)
+        .catch(onFailure);
+    </script>
+    
 </body>
 </html>
